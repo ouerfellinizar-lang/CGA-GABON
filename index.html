@@ -23,6 +23,12 @@ input,select,textarea{font-family:'DM Sans',sans-serif}
 .spin{animation:spin 1s linear infinite}
 .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;padding:12px 20px;border-radius:16px;font-weight:700;font-size:14px;color:white;box-shadow:0 8px 24px rgba(0,0,0,.2);white-space:nowrap}
 </style>
+<style media="print">
+  nav, header, button { display: none !important; }
+  body { background: white !important; }
+  .app { max-width: 100% !important; }
+  main { padding: 0 !important; padding-bottom: 0 !important; }
+</style>
 <script>
 tailwind.config={theme:{extend:{colors:{
   brand:{50:'#f0f7ff',100:'#DEEAF1',400:'#BDD7EE',700:'#2E5FA3',800:'#243d6e',900:'#1F3864'},
@@ -150,9 +156,189 @@ function famLabel(k){return FAM.find(f=>f.k===k)?.l||k}
 function cfgLabel(k){return k}
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
+
+// ── DEVIS PAGE ────────────────────────────────────────────────────────────────
+function pDevis(root){
+  if(!S.projet){set({page:'projets'});return}
+  const totals=S.fenetres.reduce((a,f)=>{
+    const c=calcF(f);return{ht:a.ht+c.htFCFA,tva:a.tva+c.tva,ttc:a.ttc+c.ttc}
+  },{ht:0,tva:0,ttc:0})
+  const transport=S.params.transport||0
+  const baseHT=totals.ht+transport
+  const tvaTotal=Math.round(baseHT*S.params.tva)
+  const ttc=baseHT+tvaTotal
+  const num='DEV-'+Date.now().toString().slice(-6)
+
+  root.innerHTML=`
+  ${topbar()}
+  <main class="p-4 space-y-4 pb-28 fade-in">
+    <div class="flex items-center gap-3">
+      <button onclick="set({page:'projet'})" class="w-9 h-9 rounded-xl bg-white shadow flex items-center justify-center text-lg font-bold">‹</button>
+      <div><h1 class="text-xl font-black text-brand-900">Devis client</h1>
+      <p class="text-sm text-slate-500">${S.projet?.nom}</p></div>
+    </div>
+
+    <!-- Aperçu devis -->
+    <div class="bg-white rounded-2xl shadow p-5 space-y-4" id="devis-preview">
+      <div class="flex justify-between items-start pb-3 border-b border-slate-100">
+        <div>
+          <div class="text-2xl font-black" style="color:#1F3864">CGA <span style="color:#F59E0B">GABON</span></div>
+          <div class="text-xs text-slate-500 mt-1">${S.params.societe_adresse||'Libreville, Gabon'}</div>
+          ${S.params.societe_tel?`<div class="text-xs text-slate-500">${S.params.societe_tel}</div>`:''}
+        </div>
+        <div class="text-right">
+          <div class="font-bold text-brand-900">DEVIS</div>
+          <div class="text-xs text-slate-500">N° ${num}</div>
+          <div class="text-xs text-slate-500">${new Date().toLocaleDateString('fr-FR')}</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 rounded-xl p-3">
+        <div class="text-xs text-slate-400 mb-1">CLIENT</div>
+        <div class="font-semibold text-brand-900">${S.projet?.client||'—'}</div>
+        <div class="text-sm text-slate-500">${S.projet?.chantier||''}</div>
+      </div>
+
+      <div class="space-y-2">
+        ${S.fenetres.map((f,i)=>{
+          const c=calcF(f)
+          const pu=Math.round(c.htFCFA/f.qty)
+          return`<div class="flex justify-between items-start py-2 border-b border-slate-50 text-sm">
+            <div class="flex-1">
+              <div class="font-semibold">${f.repere||'F'+String(i+1).padStart(2,'0')} — ${famLabel(f.famille)}${f.config?' '+f.config:''}</div>
+              <div class="text-xs text-slate-400">${f.largeur}×${f.hauteur}mm · ${FINS.find(x=>x.k===f.finition)?.l||'Blanc'} · Qté ${f.qty}</div>
+            </div>
+            <div class="text-right ml-2 flex-shrink-0">
+              <div class="text-xs text-slate-400">${fcfa(pu)}/u</div>
+              <div class="font-bold">${fcfa(c.htFCFA)}</div>
+            </div>
+          </div>`
+        }).join('')}
+        ${transport>0?`<div class="flex justify-between text-sm py-2 border-b border-slate-50">
+          <span class="text-slate-600">Transport</span><span class="font-bold">${fcfa(transport)}</span></div>`:''}
+      </div>
+
+      <div class="space-y-2 pt-2">
+        <div class="flex justify-between text-sm text-slate-600">
+          <span>Total HT</span><span class="font-semibold">${fcfa(baseHT)}</span>
+        </div>
+        <div class="flex justify-between text-sm text-slate-600">
+          <span>TVA ${Math.round(S.params.tva*100)}%</span><span class="font-semibold">${fcfa(tvaTotal)}</span>
+        </div>
+        <div class="flex justify-between font-black text-lg bg-brand-900 text-white px-4 py-3 rounded-xl">
+          <span>TOTAL TTC</span><span style="color:#F59E0B">${fcfa(ttc)}</span>
+        </div>
+      </div>
+
+      <div class="text-xs text-slate-400 text-center pt-2">
+        Devis valable 30 jours · Acompte 40% à la commande · Solde à la livraison
+      </div>
+    </div>
+
+    <button onclick="printDevis()" class="w-full py-4 bg-success text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow" style="background:#1E8449">
+      🖨️ Imprimer / Sauvegarder PDF
+    </button>
+  </main>
+  ${botnav('projets')}`
+}
+
+function printDevis(){
+  window.print()
+}
+
+// ── BC FOURNISSEUR PAGE ───────────────────────────────────────────────────────
+function pBC(root){
+  if(!S.projet){set({page:'projets'});return}
+
+  // Consolider les profilés et accessoires
+  const profMap={}
+  const accRef={
+    CFS65:['19446','19451','19452','57415','13543'],
+    NOVA_B:['19379','19380','19112','19111'],
+    NOVA_C:['19106','19107','19110','19121','19112'],
+    THAOS_B:['19212','19214','19215','19213'],
+    THAOS_C:['19097','19101','19102','19103'],
+    ECW50:['10901','10940','10980','10981'],
+    PERGOLA:['22008','19281','19282','19249','19313','19314'],
+    PORTAIL_B:['19193','19196','19205','19198'],
+    PORTAIL_C:['19194','19195','11885','19200'],
+    BALU_12481:['12481']
+  }
+
+  S.fenetres.forEach(f=>{
+    const perim=2*(f.largeur+f.hauteur)/1000
+    const refs=accRef[f.famille]||[]
+    refs.forEach(ref=>{
+      const prixML=PP[ref]?.b||0
+      const ml=perim*f.qty
+      if(!profMap[ref])profMap[ref]={ref,ml:0,prixML,total:0}
+      profMap[ref].ml+=ml
+      profMap[ref].total+=ml*prixML
+    })
+  })
+
+  const profils=Object.values(profMap).map(p=>({
+    ...p,
+    ml:+p.ml.toFixed(2),
+    barres:Math.ceil(p.ml/6),
+    total:+p.total.toFixed(2)
+  }))
+
+  const totalEUR=profils.reduce((s,p)=>s+p.total,0)
+  const coeff_import=coeff()
+  const totalFCFA=Math.round(totalEUR*coeff_import)
+
+  root.innerHTML=`
+  ${topbar()}
+  <main class="p-4 space-y-4 pb-28 fade-in">
+    <div class="flex items-center gap-3">
+      <button onclick="set({page:'projet'})" class="w-9 h-9 rounded-xl bg-white shadow flex items-center justify-center text-lg font-bold">‹</button>
+      <div><h1 class="text-xl font-black text-brand-900">Bon de commande</h1>
+      <p class="text-sm text-slate-500">KAYE / Exlabesa · ${S.projet?.nom}</p></div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+      <div class="px-4 py-3" style="background:#1E8449">
+        <h2 class="font-bold text-white text-sm">📦 Profilés consolidés (${profils.length} références)</h2>
+      </div>
+      <div class="divide-y divide-slate-50">
+        ${profils.map(p=>`
+        <div class="flex items-center gap-3 px-4 py-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-sm" style="color:#2E5FA3">EXL-${p.ref}</div>
+            <div class="text-xs text-slate-400">${p.ml.toFixed(2)} ml net · ${p.barres} barre${p.barres>1?'s':''} 6m</div>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <div class="text-xs text-slate-400">${p.prixML.toFixed(3)} €/ml</div>
+            <div class="font-bold text-sm text-brand-900">${p.total.toFixed(2)} €</div>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="bg-brand-900 rounded-2xl p-5 text-white">
+      <div class="text-xs opacity-60 mb-1">TOTAL ACHAT HT (profilés)</div>
+      <div class="text-2xl font-black" style="color:#F59E0B">${totalEUR.toFixed(2)} €</div>
+      <div class="text-sm opacity-70 mt-1">≈ ${fcfa(totalFCFA)} arrivée Libreville</div>
+      <div class="mt-3 pt-3 border-t border-white/20 text-xs opacity-60">
+        KAYE Aluminium Tanger · EXW/FOB Tanger · Alliage 6060/6063 T5
+      </div>
+    </div>
+
+    <button onclick="printBC()" class="w-full py-4 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow" style="background:#D97706">
+      🖨️ Imprimer / Sauvegarder PDF
+    </button>
+  </main>
+  ${botnav('projets')}`
+}
+
+function printBC(){
+  window.print()
+}
+
 function draw(){
   const root=document.getElementById('root')
-  const pages={loading:pLoading,login:pLogin,projets:pProjets,projet:pProjet,chiffrage:pChiffrage,parametres:pParams}
+  const pages={loading:pLoading,login:pLogin,projets:pProjets,projet:pProjet,chiffrage:pChiffrage,parametres:pParams,devis:pDevis,bc:pBC}
   ;(pages[S.page]||pLoading)(root)
 }
 
@@ -278,18 +464,22 @@ function toggleNewProjet(){
 async function saveNewProjet(){
   const nom=document.getElementById('npnom').value.trim()
   if(!nom){toast('Nom requis','err');return}
-  const{data,error}=await sb.from('projets').insert({
+  const dateVal=document.getElementById('npdat').value
+  const payload={
     nom,user_id:S.user.id,
-    client:document.getElementById('npcli').value,
-    chantier:document.getElementById('npcha').value,
-    date_devis:document.getElementById('npdat').value||null,
+    client:document.getElementById('npcli').value||null,
+    chantier:document.getElementById('npcha').value||null,
     statut:'brouillon'
-  }).select().single()
-  if(error){toast('Erreur: '+error.message,'err');return}
-  toast('Projet créé !')
-  S.projet=data
-  await loadFenetres(data.id)
-  set({page:'projet',showForm:false,editF:null})
+  }
+  if(dateVal&&dateVal.match(/^\d{4}-\d{2}-\d{2}$/))payload.date_devis=dateVal
+  try{
+    const{data,error}=await sb.from('projets').insert(payload).select().single()
+    if(error){toast('Erreur: '+error.message,'err');console.error(error);return}
+    toast('Projet créé !')
+    S.projet=data
+    await loadFenetres(data.id)
+    set({page:'projet',showForm:false,editF:null})
+  }catch(e){toast('Erreur réseau','err');console.error(e)}
 }
 
 async function openProjet(id){
@@ -331,6 +521,14 @@ function pProjet(root){
       <button onclick="set({page:'parametres'})"
         class="bg-slate-600 text-white rounded-xl py-3.5 flex flex-col items-center gap-1 text-sm font-bold shadow">
         <span class="text-2xl">⚙️</span>Paramètres
+      </button>
+      <button onclick="set({page:'devis'})"
+        class="text-white rounded-xl py-3.5 flex flex-col items-center gap-1 text-sm font-bold shadow" style="background:#1E8449">
+        <span class="text-2xl">📄</span>Devis client
+      </button>
+      <button onclick="set({page:'bc'})"
+        class="text-white rounded-xl py-3.5 flex flex-col items-center gap-1 text-sm font-bold shadow" style="background:#D97706">
+        <span class="text-2xl">📦</span>BC Fournisseur
       </button>
     </div>
 
